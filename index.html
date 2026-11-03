@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CV 3D – Mechanical Cube</title>
+<style>
+:root{--cy:#5fe3ff;--ink:#e8f4ff;--bg:#05060f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#161a3a 0%,#080a1c 55%,#02030a 100%);color:var(--ink);font-family:"Segoe UI",system-ui,sans-serif;touch-action:none}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+.top{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 0;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none}
+.top h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.04em}
+.top small{display:block;opacity:.6;font-size:12px;margin-top:2px;font-weight:400}
+.top label{pointer-events:auto;font-size:12px;border:1px solid rgba(95,227,255,.4);border-radius:999px;padding:7px 12px;background:rgba(10,16,40,.55);backdrop-filter:blur(6px);cursor:pointer}
+.top input{display:none}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:0 16px calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;flex-direction:column;align-items:center;gap:10px}
+#hint{font-size:12px;opacity:.65;text-align:center;min-height:16px}
+.row{display:flex;gap:12px;width:100%;max-width:420px}
+button{flex:1;height:50px;border-radius:14px;border:1px solid rgba(95,227,255,.55);background:rgba(10,18,44,.6);color:var(--ink);font-size:15px;font-weight:600;letter-spacing:.06em;backdrop-filter:blur(8px);cursor:pointer;transition:.25s}
+button:active{transform:scale(.97)}
+button.on{background:linear-gradient(135deg,#1fb6ff,#6a5cff);border-color:transparent;box-shadow:0 0 22px rgba(80,160,255,.5)}
+button:disabled{opacity:.35;cursor:default;box-shadow:none}
+#pg{display:none;gap:10px;align-items:center;font-size:13px}
+#pg button{flex:none;width:44px;height:36px;font-size:18px;border-radius:10px}
+#load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05060f;font-size:13px;opacity:1;transition:opacity .6s;pointer-events:none}
+@media (prefers-reduced-motion:reduce){button{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="top">
+  <h1>Curriculum Vitae<small>Kéo để xoay · chụm để zoom</small></h1>
+  <label>Chọn PDF<input id="file" type="file" accept="application/pdf"></label>
+</div>
+<div class="bar">
+  <div id="pg"><button id="pp">‹</button><span id="pn">1/1</span><button id="pnx">›</button></div>
+  <div id="hint"></div>
+  <div class="row">
+    <button id="bx" class="on">EXPORT</button>
+    <button id="ba" disabled>ASSEMBLE</button>
+  </div>
+</div>
+<div id="load">Đang dựng khối cơ khí…</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+/* ====== CẤU HÌNH ====== */
+const PDF_URL = 'cv.pdf';            // đặt file CV cùng thư mục với index.html
+/* ====================== */
+const $ = id => document.getElementById(id);
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enablePan = false; controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 3; controls.maxDistance = 16;
+
+/* ---- ánh sáng ---- */
+scene.add(new THREE.AmbientLight(0xaab4ff, 0.7));
+const d1 = new THREE.DirectionalLight(0xffffff, 1.3); d1.position.set(4,6,5); scene.add(d1);
+const d2 = new THREE.DirectionalLight(0x6f8cff, 0.7); d2.position.set(-5,-3,-4); scene.add(d2);
+const pl = new THREE.PointLight(0x5fe3ff, 0.8, 30); pl.position.set(0,0,6); scene.add(pl);
+
+/* ---- thiên hà ---- */
+const space = new THREE.Group(); scene.add(space);
+(function(){
+  const N=2500, p=new Float32Array(N*3);
+  for(let i=0;i<N;i++){const r=70+Math.random()*60,a=Math.random()*6.283,b=Math.acos(2*Math.random()-1);
+    p[i*3]=r*Math.sin(b)*Math.cos(a);p[i*3+1]=r*Math.cos(b);p[i*3+2]=r*Math.sin(b)*Math.sin(a);}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  space.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:0.45,sizeAttenuation:true,transparent:true,opacity:.85})));
+  const M=7000,gp=new Float32Array(M*3),gc=new Float32Array(M*3),c1=new THREE.Color(1,.72,.45),c2=new THREE.Color(.3,.5,1),c=new THREE.Color();
+  for(let i=0;i<M;i++){const r=Math.pow(Math.random(),.65)*42,arm=(i%3)/3*6.283+r*.32,n=(Math.random()-.5)*(2+r*.12);
+    gp[i*3]=Math.cos(arm)*r+n;gp[i*3+1]=(Math.random()-.5)*(1.5+r*.04);gp[i*3+2]=Math.sin(arm)*r+n;
+    c.copy(c1).lerp(c2,r/42);gc.set([c.r,c.g,c.b],i*3);}
+  const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.BufferAttribute(gp,3));gg.setAttribute('color',new THREE.BufferAttribute(gc,3));
+  const gal=new THREE.Points(gg,new THREE.PointsMaterial({size:0.22,vertexColors:true,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false}));
+  gal.position.set(-6,-14,-38);gal.rotation.set(.75,0,.25);gal.name='gal';space.add(gal);
+})();
+
+/* ---- môi trường phản xạ (để kim loại sáng bóng) ---- */
+(function(){
+  const cv=document.createElement('canvas');cv.width=512;cv.height=256;const x=cv.getContext('2d');
+  const g=x.createLinearGradient(0,0,0,256);g.addColorStop(0,'#ffffff');g.addColorStop(.5,'#a9b4c8');g.addColorStop(1,'#3b4256');
+  x.fillStyle=g;x.fillRect(0,0,512,256);x.fillStyle='rgba(255,255,255,.95)';[40,170,300,430].forEach(a=>x.fillRect(a,60,34,90));
+  const t=new THREE.CanvasTexture(cv);t.mapping=THREE.EquirectangularReflectionMapping;t.encoding=THREE.sRGBEncoding;
+  scene.environment=new THREE.PMREMGenerator(renderer).fromEquirectangular(t).texture;
+})();
+
+/* ---- vật liệu ---- */
+const matAlu=new THREE.MeshStandardMaterial({color:0xc9ced6,metalness:.9,roughness:.32});
+const matChrome=new THREE.MeshStandardMaterial({color:0xe6eaf0,metalness:1,roughness:.12});
+const matDark=new THREE.MeshStandardMaterial({color:0x2a2e36,metalness:.8,roughness:.35});
+const matBlack=new THREE.MeshStandardMaterial({color:0x15171b,metalness:.55,roughness:.42});
+const matGold=new THREE.MeshStandardMaterial({color:0xd9a441,metalness:.9,roughness:.28});
+const thr=(()=>{const c=document.createElement('canvas');c.width=c.height=16;const x=c.getContext('2d');x.fillStyle='#bcc2cc';x.fillRect(0,0,16,16);
+  x.strokeStyle='#4a505b';x.lineWidth=3;x.beginPath();x.moveTo(0,16);x.lineTo(16,0);x.stroke();
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,60);t.encoding=THREE.sRGBEncoding;return t;})();
+const matThread=new THREE.MeshStandardMaterial({map:thr,metalness:.85,roughness:.35});
+
+/* ---- hàm dựng chi tiết ---- */
+function bolt(){const m=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.05,6),matDark);m.rotation.x=Math.PI/2;return m;}
+function cyl(r,len,mat,ax){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,20),mat);if(ax===0)m.rotation.z=Math.PI/2;if(ax===2)m.rotation.x=Math.PI/2;return m;}
+function gear(r,t){
+  const s=new THREE.Shape(),n=t*4;
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2,rr=(i%4<2)?r:r*.8;i?s.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):s.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);}
+  s.closePath();const h=new THREE.Path();h.absarc(0,0,r*.28,0,Math.PI*2,true);s.holes.push(h);
+  return new THREE.Mesh(new THREE.ExtrudeGeometry(s,{depth:.06,bevelEnabled:false}),matGold);
+}
+function profileGeo(len){            /* nhôm định hình có rãnh T */
+  const w=.1,pts=[],side=[[-w,-w],[-.04,-w],[-.04,-w+.05],[.04,-w+.05],[.04,-w]];
+  for(let k=0;k<4;k++){const c=Math.cos(k*Math.PI/2),s=Math.sin(k*Math.PI/2);side.forEach(([x,y])=>pts.push(new THREE.Vector2(x*c-y*s,x*s+y*c)));}
+  const sh=new THREE.Shape(pts),h=new THREE.Path();h.absarc(0,0,.03,0,Math.PI*2,true);sh.holes.push(h);
+  const g=new THREE.ExtrudeGeometry(sh,{depth:len,bevelEnabled:false});g.translate(0,0,-len/2);return g;
+}
+function holePlate(w,d,r,ins=.1,hr=.03){
+  const s=new THREE.Shape();s.moveTo(-w/2,-d/2);s.lineTo(w/2,-d/2);s.lineTo(w/2,d/2);s.lineTo(-w/2,d/2);s.closePath();
+  const h=new THREE.Path();h.absarc(0,0,r,0,Math.PI*2,true);s.holes.push(h);
+  [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([a,b])=>{const q=new THREE.Path();q.absarc(a*(w/2-ins),b*(d/2-ins),hr,0,Math.PI*2,true);s.holes.push(q);});
+  const g=new THREE.ExtrudeGeometry(s,{depth:.06,bevelEnabled:false});g.rotateX(-Math.PI/2);return new THREE.Mesh(g,matBlack);
+}
+function bearing(){
+  const g=new THREE.Group();g.add(new THREE.Mesh(new THREE.BoxGeometry(.34,.08,.34),matAlu));
+  const a=cyl(.15,.2,matChrome,0);a.position.y=.12;g.add(a);const b=cyl(.075,.24,matDark,0);b.position.y=.12;g.add(b);return g;
+}
+
+/* ---- khối lập phương hở: khung nhôm + cơ cấu bên trong ---- */
+const S=2.4,H=S/2;
+const cube=new THREE.Group();cube.rotation.set(.5,.6,0);scene.add(cube);
+const parts=[],gears=[];
+const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+function addPart(obj,p0,p1,eul){
+  obj.position.copy(p0);cube.add(obj);
+  const q0=obj.quaternion.clone(),q1=q0.clone().multiply(new THREE.Quaternion().setFromEuler(eul||new THREE.Euler(.5,.4,.3)));
+  parts.push({obj,p0:p0.clone(),p1,q0,q1,d:(parts.length%10)*.03});
+}
+/* ===== KHUNG: 12 thanh nhôm (dài S-0.2) chạm khít 8 khớp góc (0.2) → khối vuông đúng 2.6 ===== */
+for(let al=0;al<3;al++){                      /* al = trục chạy dọc theo thanh */
+  const o1=(al+1)%3,o2=(al+2)%3;
+  [-1,1].forEach(s1=>[-1,1].forEach(s2=>{
+    const g=new THREE.Group(),m=new THREE.Mesh(profileGeo(S-.2),matAlu);g.add(m);
+    if(al===0)m.rotation.y=Math.PI/2;if(al===1)m.rotation.x=Math.PI/2;
+    [[o1,s1],[o2,s2]].forEach(([ax,sg])=>[-.5,.5].forEach(t=>{const c=cyl(.05,.012,matChrome,ax===0?0:ax===2?2:1);const q=[0,0,0];q[al]=t;q[ax]=sg*.106;c.position.set(...q);g.add(c);}));
+    const pos=[0,0,0];pos[o1]=s1*H;pos[o2]=s2*H;const p0=V(...pos);
+    addPart(g,p0,p0.clone().add(p0.clone().normalize().multiplyScalar(3.2)),new THREE.Euler(.3,.7,.2));
+  }));
+}
+[-1,1].forEach(x=>[-1,1].forEach(y=>[-1,1].forEach(z=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(.2,.2,.2),matAlu);
+  [[x,0,0],[0,y,0],[0,0,z]].forEach(([a,b,c])=>{const bt=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.012,16),matDark);
+    if(a)bt.rotation.z=Math.PI/2;if(c)bt.rotation.x=Math.PI/2;bt.position.set(a*.106,b*.106,c*.106);m.add(bt);});
+  const p0=V(x*H,y*H,z*H);addPart(m,p0,p0.clone().add(p0.clone().normalize().multiplyScalar(3.6)),new THREE.Euler(.8,.2,.6));
+})));
+/* ===== khối đóng kín: mỗi mặt = 4 thanh nhôm chữ thập + 4 tấm + moay-ơ; ruột = trục vít trung tâm ===== */
+const matBlue=new THREE.MeshStandardMaterial({color:0x1e6bff,metalness:.4,roughness:.3});
+const matCopper=new THREE.MeshStandardMaterial({color:0xb87333,metalness:.9,roughness:.35});
+const matGray=new THREE.MeshStandardMaterial({color:0x3b3e46,metalness:.6,roughness:.4});
+const matSideP=new THREE.MeshStandardMaterial({color:0x858c96,metalness:.85,roughness:.4});
+const matYel=new THREE.MeshStandardMaterial({color:0xe0b020,metalness:.8,roughness:.3});
+const matBl2=new THREE.MeshStandardMaterial({color:0x2a63d6,metalness:.7,roughness:.3});
+const matGrn=new THREE.MeshStandardMaterial({color:0x2fae4a,metalness:.6,roughness:.35});
+function ring(ro,ri,h,mat){const s=new THREE.Shape();s.absarc(0,0,ro,0,Math.PI*2,false);const p=new THREE.Path();p.absarc(0,0,ri,0,Math.PI*2,true);s.holes.push(p);
+  const g=new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false,curveSegments:24});g.translate(0,0,-h/2);g.rotateX(-Math.PI/2);return new THREE.Mesh(g,mat);}
+function plateAt(w,d,r,ins,hr){const m=holePlate(w,d,r,ins,hr);m.geometry.translate(0,-.03,0);return m;}
+function screwCap(r){return cyl(r,.012,matChrome,1);}
+function arm(alongX,s){const g=new THREE.Group(),b=new THREE.Mesh(profileGeo(.98),matAlu);if(alongX)b.rotation.y=Math.PI/2;g.add(b);
+  const c=screwCap(.05);c.position.set(alongX?s*.32:0,.106,alongX?0:s*.32);g.add(c);return g;}
+function hubNut(){const g=new THREE.Group();g.add(cyl(.2,.2,matThread,1));const d=cyl(.1,.012,matDark,1);d.position.y=.106;g.add(d);return g;}
+function hubBearing(col){const g=new THREE.Group();g.add(new THREE.Mesh(new THREE.BoxGeometry(.24,.2,.24),matAlu));
+  const f=new THREE.Mesh(new THREE.BoxGeometry(.5,.06,.5),matAlu);f.position.y=.073;g.add(f);
+  const r1=ring(.17,.1,.02,matChrome);r1.position.y=.112;g.add(r1);const r2=ring(.215,.17,.02,col);r2.position.y=.112;g.add(r2);
+  const r3=ring(.1,.06,.02,matDark);r3.position.y=.112;g.add(r3);
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const c=screwCap(.03);c.position.set(a*.2,.108,b*.2);g.add(c);});return g;}
+let mi=0;
+function mech(obj,x,y,z){const p0=V(x,y,z),i=mi++,d=p0.clone();d.z-=.6;
+  if(Math.abs(x)<.7&&Math.abs(y)<.7&&z>0)d.y+=2.2;if(d.length()<.1)d.set(0,1,0);
+  addPart(obj,p0,p0.clone().add(d.normalize().multiplyScalar(3.8)),new THREE.Euler(Math.sin(i)*.8,Math.cos(i*1.7)*.8,Math.sin(i*2.3)*.6));}
+[[V(0,1,0),0,null],[V(0,-1,0),0,null],[V(1,0,0),1,matYel],[V(-1,0,0),1,matBl2],[V(0,0,1),1,matBl2],[V(0,0,-1),1,matGrn]].forEach(([n,hub,col],fi)=>{
+  const qf=new THREE.Quaternion().setFromUnitVectors(V(0,1,0),n);
+  const add=(o,x,y,z)=>{const p=V(x,y,z).applyQuaternion(qf);o.quaternion.premultiply(qf);mech(o,p.x,p.y,p.z);};
+  [-1,1].forEach(s=>{add(arm(true,s),s*.61,H,0);add(arm(false,s),0,H,s*.61);});
+  add(hub?hubBearing(col):hubNut(),0,H,0);
+  [-1,1].forEach(sx=>[-1,1].forEach(sz=>{
+    const p=plateAt(1.16,1.16,.12,.18);p.material=fi<2?matGray:matSideP;
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const c=cyl(.045,.012,matChrome,1);c.position.set(a*.4,.036,b*.4);p.add(c);});
+    add(p,sx*.61,H-.13,sz*.61);
+    if(fi<2)add(cyl(.035,.9,matBlue,0),sx*.61,H-.195,sz*.61);
+  }));
+});
+/* ===== RUỘT: lấp đầy hộp bằng 3 tầng sàn, trục dẫn, động cơ, trục vít, bánh răng, ổ bi, bo mạch ===== */
+const matPCB=new THREE.MeshStandardMaterial({color:0x1f7a3a,metalness:.3,roughness:.5});
+function motor(){const g=new THREE.Group();g.add(new THREE.Mesh(new THREE.BoxGeometry(.42,.34,.42),matBlack));
+  [.19,-.19].forEach(y=>{const c=new THREE.Mesh(new THREE.BoxGeometry(.42,.05,.42),matAlu);c.position.y=y;g.add(c);});
+  const boss=cyl(.11,.04,matChrome,1);boss.position.y=-.24;g.add(boss);
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const bt=cyl(.022,.03,matDark,1);bt.position.set(a*.16,-.225,b*.16);g.add(bt);});return g;}
+function coupling(){const g=new THREE.Group();g.add(cyl(.075,.24,matAlu,1));
+  [.075,-.075].forEach(y=>{const c=cyl(.085,.03,matDark,1);c.position.y=y;g.add(c);});return g;}
+function ballBearing(){const g=new THREE.Group();g.add(ring(.17,.125,.06,matChrome),ring(.095,.05,.06,matChrome),ring(.125,.095,.04,matDark));
+  for(let i=0;i<8;i++){const a=i/8*6.283,b=new THREE.Mesh(new THREE.SphereGeometry(.022,10,8),matChrome);b.position.set(Math.cos(a)*.11,0,Math.sin(a)*.11);g.add(b);}return g;}
+function pillow(col){const g=new THREE.Group();g.add(new THREE.Mesh(new THREE.BoxGeometry(.16,.28,.34),matAlu));
+  const rr=new THREE.Group();rr.add(ring(.12,.07,.03,matChrome),ring(.15,.12,.025,col),ring(.07,.04,.03,matDark));
+  rr.rotation.z=-Math.PI/2;rr.position.x=.09;g.add(rr);return g;}
+function deck(mat,bush){const g=new THREE.Group(),p=plateAt(1.9,1.9,.2,.15,.07);p.material=mat;g.add(p);
+  if(bush)[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const bs=cyl(.1,.18,matAlu,1);bs.position.set(a*.8,0,b*.8);g.add(bs);});return g;}
+/* 4 trụ dẫn thẳng đứng chạm 2 tấm cover trên/dưới */
+[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>mech(cyl(.06,2.08,matChrome,1),a*.8,0,b*.8));
+/* 3 tầng sàn trượt trên trụ */
+mech(deck(matBlack,true),0,.55,0);mech(deck(matGray,true),0,-.45,0);mech(deck(matBlack,false),0,-.98,0);
+/* trục vít trung tâm + ống ren + đệm đồng */
+mech(cyl(.12,2,matThread,1),0,0,0);
+mech(cyl(.24,.2,matThread,1),0,.68,0);mech(cyl(.24,.2,matThread,1),0,-.34,0);mech(cyl(.35,.03,matCopper,1),0,-.94,0);
+/* tầng trên: 2 cụm động cơ – khớp nối – trục vít – đai ốc – ổ bi */
+function hSet(sg,z){const yy=.79,m=new THREE.Group(),mo=motor();mo.rotation.z=sg>0?Math.PI/2:-Math.PI/2;m.add(mo);mech(m,-sg*.62,yy,z);
+  const c=coupling();c.rotation.z=Math.PI/2;mech(c,-sg*.24,yy,z);
+  mech(cyl(.05,.97,matThread,0),sg*.365,yy,z);mech(cyl(.09,.14,matGold,0),sg*.4,yy,z);
+  mech(new THREE.Mesh(new THREE.BoxGeometry(.14,.42,.42),matBlack),sg*.93,yy,z);
+  const bb=ballBearing();bb.rotation.z=Math.PI/2;mech(bb,sg*.85,yy,z);}
+hSet(1,-.5);hSet(-1,.5);
+/* tầng giữa: 4 thanh giằng + 3 trục bánh răng */
+[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>mech(cyl(.045,.94,matChrome,1),a*.45,.05,b*.45));
+[[.6,0,.32,12,1],[-.6,0,.26,10,-1.2],[0,.65,.22,8,1.6]].forEach(([x,z,r,t,sp])=>{
+  mech(cyl(.04,.94,matChrome,1),x,.05,z);
+  const gg=new THREE.Group(),ge=gear(r,t);gg.add(ge);gg.rotation.x=-Math.PI/2;gears.push([ge,sp]);mech(gg,x,0,z);});
+/* 4 gối đỡ ổ bi màu trên sàn giữa */
+[[.9,0,matYel,0],[-.9,0,matBl2,Math.PI],[0,.9,matGrn,-Math.PI/2],[0,-.9,matBl2,Math.PI/2]].forEach(([x,z,c,ry])=>{const p=pillow(c);p.rotation.y=ry;mech(p,x,-.28,z);});
+/* tầng dưới: 2 động cơ đứng + bo mạch */
+[[-.6,-.4],[.6,-.4]].forEach(([x,z])=>{const m=motor();m.rotation.x=Math.PI;mech(m,x,-.735,z);});
+const pcb=new THREE.Group();pcb.add(new THREE.Mesh(new THREE.BoxGeometry(1.3,.04,.6),matPCB));
+[[-.4,0],[0,.05],[.4,-.05]].forEach(([x,z])=>{const c=new THREE.Mesh(new THREE.BoxGeometry(.22,.06,.22),matBlack);c.position.set(x,.05,z);pcb.add(c);});
+[[-.55,-.2],[-.45,.2],[.55,.2]].forEach(([x,z])=>{const c=cyl(.05,.12,matBlue,1);c.position.set(x,.08,z);pcb.add(c);});
+const cn=new THREE.Mesh(new THREE.BoxGeometry(.5,.07,.1),matGold);cn.position.set(.1,.055,-.22);pcb.add(cn);
+mech(pcb,0,-.93,.62);
+
+/* ---- tấm thép A4 chứa CV ---- */
+const PW=1.5,PH=PW*297/210;
+const plate=new THREE.Group();scene.add(plate);
+const matPdf=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.7,metalness:.05});
+const matSide=new THREE.MeshStandardMaterial({color:0x9aa2ad,metalness:.85,roughness:.3});
+const sheet=new THREE.Mesh(new THREE.BoxGeometry(PW,PH,.035),[matSide,matSide,matSide,matSide,matPdf,matSide]);
+plate.add(sheet);
+const frame=new THREE.Mesh(new THREE.BoxGeometry(PW+.1,PH+.1,.03),matSide);frame.position.z=-.03;plate.add(frame);
+[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const bt=bolt();bt.scale.setScalar(.8);bt.position.set(a*(PW/2+.02),b*(PH/2+.02),-.01);plate.add(bt);});
+plate.visible=false;plate.scale.setScalar(.001);
+
+/* ---- PDF ---- */
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let pdfDoc=null,page=1,cvTex=null;
+function setCanvasTex(cv){
+  if(cvTex)cvTex.dispose();
+  cvTex=new THREE.CanvasTexture(cv);cvTex.encoding=THREE.sRGBEncoding;cvTex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  matPdf.map=cvTex;matPdf.needsUpdate=true;
+}
+function placeholder(msg){
+  const cv=document.createElement('canvas');cv.width=1240;cv.height=1754;const x=cv.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,1240,1754);x.fillStyle='#222';x.font='bold 54px sans-serif';x.textAlign='center';
+  x.fillText('CV chưa được nạp',620,820);x.font='34px sans-serif';x.fillStyle='#555';x.fillText(msg,620,890);
+  setCanvasTex(cv);
+}
+async function renderPage(n){
+  const W=1500,Hh=Math.round(W*297/210);
+  const pg=await pdfDoc.getPage(n),vp0=pg.getViewport({scale:1}),sc=Math.min(W/vp0.width,Hh/vp0.height),vp=pg.getViewport({scale:sc});
+  const tmp=document.createElement('canvas');tmp.width=vp.width;tmp.height=vp.height;
+  await pg.render({canvasContext:tmp.getContext('2d'),viewport:vp}).promise;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=Hh;const cx=cv.getContext('2d');
+  cx.fillStyle='#fff';cx.fillRect(0,0,W,Hh);cx.drawImage(tmp,(W-vp.width)/2,(Hh-vp.height)/2);
+  setCanvasTex(cv);$('pn').textContent=n+'/'+pdfDoc.numPages;
+}
+async function loadPDF(src){
+  try{pdfDoc=await pdfjsLib.getDocument(src).promise;page=1;await renderPage(1);
+    $('pg').style.display=pdfDoc.numPages>1&&state==='exploded'?'flex':'none';}
+  catch(e){pdfDoc=null;placeholder('Đặt file cv.pdf cùng thư mục hoặc bấm "Chọn PDF"');}
+}
+$('file').onchange=async e=>{const f=e.target.files[0];if(f)await loadPDF({data:await f.arrayBuffer()});};
+$('pp').onclick=()=>{if(pdfDoc&&page>1)renderPage(--page);};
+$('pnx').onclick=()=>{if(pdfDoc&&page<pdfDoc.numPages)renderPage(++page);};
+placeholder('Đang tải…');loadPDF(PDF_URL);
+
+/* ---- trạng thái & camera ---- */
+let state='assembled',t=0,camT=1,camFrom=V(0,0,0),camTo=V(0,0,0);
+const portrait=()=>innerWidth/innerHeight<.8;
+const asmCam=()=>V(0,portrait()?3:2.4,portrait()?11:8.5);
+const expCam=()=>V(0,0,portrait()?4.7:5.4);
+function goCam(to){camFrom=camera.position.clone();camTo=to;camT=0;}
+function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
+addEventListener('resize',()=>{resize();if(camT>=1)camera.position.copy(state==='exploded'?expCam():asmCam());});
+resize();camera.position.copy(asmCam());controls.update();
+const hint=s=>$('hint').textContent=s;
+hint('Khối đang tự quay · kéo để xoay tay');
+$('bx').onclick=()=>{if(state==='exploded')return;state='exploded';$('bx').disabled=true;$('bx').classList.remove('on');$('ba').disabled=false;$('ba').classList.add('on');
+  goCam(expCam());hint('Kéo xoay 3D · chụm hai ngón để zoom đọc CV');if(pdfDoc&&pdfDoc.numPages>1)$('pg').style.display='flex';};
+$('ba').onclick=()=>{if(state==='assembled')return;state='assembled';$('ba').disabled=true;$('ba').classList.remove('on');$('bx').disabled=false;$('bx').classList.add('on');
+  goCam(asmCam());hint('Khối đang tự quay · kéo để xoay tay');$('pg').style.display='none';};
+
+/* ---- vòng lặp ---- */
+const sm=x=>x*x*(3-2*x),cl=x=>Math.min(1,Math.max(0,x)),idQ=new THREE.Quaternion(),clock=new THREE.Clock();
+function frame_(){
+  requestAnimationFrame(frame_);
+  const dt=Math.min(clock.getDelta(),.05),el=clock.elapsedTime;
+  t+=((state==='exploded'?1:0)-t>0?1:-1)*Math.min(Math.abs((state==='exploded'?1:0)-t),dt/1.8);
+  parts.forEach(p=>{const e=sm(cl((t-p.d)/.7));p.obj.position.lerpVectors(p.p0,p.p1,e);p.obj.quaternion.copy(p.q0).slerp(p.q1,e);});
+  if(state==='assembled'){cube.rotation.y+=dt*.45;cube.rotation.x+=(.5-cube.rotation.x)*Math.min(1,dt*2);}
+  else cube.quaternion.slerp(idQ,.08);
+  gears.forEach(([g,s])=>g.rotation.z+=s*dt*.6);
+  const pt=sm(cl((t-.4)/.6));plate.visible=pt>.01;plate.scale.setScalar(.001+pt);
+  plate.rotation.y=Math.sin(el*.6)*.05*pt;plate.rotation.x=Math.sin(el*.45)*.03*pt;
+  if(camT<1){camT=Math.min(1,camT+dt/1.6);camera.position.lerpVectors(camFrom,camTo,sm(camT));}
+  space.rotation.y+=dt*.01;
+  controls.update();renderer.render(scene,camera);
+}
+frame_();
+const L=$('load');L.style.opacity=0;setTimeout(()=>L.remove(),700);
+</script>
+</body>
+</html>
